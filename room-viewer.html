@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esports Room - 3D Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            overflow: hidden;
+            background: #f5f5f5;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #controls-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            min-width: 240px;
+            z-index: 1000;
+        }
+
+        h1 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .icon {
+            font-size: 20px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #4f46e5;
+        }
+
+        button:active {
+            background: #4338ca;
+        }
+
+        .checkbox-group {
+            margin-top: 16px;
+            margin-bottom: 16px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+            cursor: pointer;
+            accent-color: #6366f1;
+        }
+
+        .checkbox-item label {
+            font-size: 14px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .controls-info {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .controls-info h3 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #374151;
+        }
+
+        .controls-info p {
+            margin-bottom: 4px;
+            line-height: 1.5;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            color: #6b7280;
+            z-index: 999;
+            text-align: center;
+            max-width: 500px;
+            padding: 20px;
+        }
+
+        #loading.hidden {
+            display: none;
+        }
+
+        #loading.error {
+            color: #ef4444;
+        }
+
+        #loading a {
+            color: #6366f1;
+            text-decoration: underline;
+        }
+
+        code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading 3D Model...</div>
+    
+    <div id="canvas-container"></div>
+    
+    <div id="controls-panel">
+        <h1><span class="icon">🎮</span> Esports Room</h1>
+        
+        <button id="reset-camera">Reset Camera</button>
+        <button id="top-view">Top View</button>
+        <button id="toggle-wireframe">Toggle Wireframe</button>
+        
+        <div class="checkbox-group">
+            <div class="checkbox-item">
+                <input type="checkbox" id="show-grid" checked>
+                <label for="show-grid">Show Grid</label>
+            </div>
+            <div class="checkbox-item">
+                <input type="checkbox" id="show-axes" checked>
+                <label for="show-axes">Show Axes</label>
+            </div>
+        </div>
+        
+        <div class="controls-info">
+            <h3>Controls:</h3>
+            <p>• Left click + drag to rotate</p>
+            <p>• Right click + drag to pan</p>
+            <p>• Scroll to zoom</p>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf5f5f5);
+
+        // Camera setup
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(5, 5, 5);
+
+        // Renderer setup
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Controls setup
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN
+        };
+
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(20, 20, 0xcccccc, 0xe0e0e0);
+        scene.add(gridHelper);
+
+        // Axes helper
+        const axesHelper = new THREE.AxesHelper(5);
+        scene.add(axesHelper);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight1.position.set(5, 10, 5);
+        scene.add(directionalLight1);
+
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+        directionalLight2.position.set(-5, 5, -5);
+        scene.add(directionalLight2);
+
+        // Load 3D model
+        let model;
+        let wireframeMode = false;
+        let originalMaterials = [];
+
+        const loadingElement = document.getElementById('loading');
+
+        const mtlLoader = new MTLLoader();
+        mtlLoader.load('room.mtl', 
+            (materials) => {
+                materials.preload();
+                
+                const objLoader = new OBJLoader();
+                objLoader.setMaterials(materials);
+                objLoader.load('room.obj',
+                    (object) => {
+                        model = object;
+                        
+                        // Store original materials
+                        model.traverse((child) => {
+                            if (child.isMesh) {
+                                originalMaterials.push({
+                                    mesh: child,
+                                    material: child.material
+                                });
+                            }
+                        });
+
+                        // Center and scale the model
+                        const box = new THREE.Box3().setFromObject(model);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3());
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        const scale = 10 / maxDim;
+                        
+                        model.position.sub(center);
+                        model.scale.multiplyScalar(scale);
+                        
+                        scene.add(model);
+                        loadingElement.classList.add('hidden');
+                    },
+                    (xhr) => {
+                        const percentComplete = (xhr.loaded / xhr.total) * 100;
+                        loadingElement.textContent = `Loading 3D Model... ${Math.round(percentComplete)}%`;
+                    },
+                    (error) => {
+                        console.error('Error loading OBJ:', error);
+                        loadingElement.classList.add('error');
+                        loadingElement.innerHTML = `
+                            <strong>Error loading 3D model</strong><br><br>
+                            Make sure all three files are in the same folder:<br>
+                            • room-viewer.html<br>
+                            • room.obj<br>
+                            • room.mtl<br><br>
+                            <strong>If files are in the same folder but still not loading:</strong><br>
+                            Some browsers block local file access for security.<br><br>
+                            <strong>Solution:</strong> Run a local server:<br>
+                            1. Open Terminal/Command Prompt<br>
+                            2. Navigate to the folder with these files<br>
+                            3. Run: <code>python3 -m http.server 8000</code><br>
+                            4. Open: <a href="http://localhost:8000/room-viewer.html" target="_blank">http://localhost:8000/room-viewer.html</a>
+                        `;
+                    }
+                );
+            },
+            (xhr) => {
+                console.log('MTL loading:', (xhr.loaded / xhr.total) * 100 + '%');
+            },
+            (error) => {
+                console.warn('Error loading MTL, loading OBJ without materials:', error);
+                
+                // Load OBJ without materials as fallback
+                const objLoader = new OBJLoader();
+                objLoader.load('room.obj',
+                    (object) => {
+                        model = object;
+                        
+                        // Apply default material
+                        const defaultMaterial = new THREE.MeshPhongMaterial({ 
+                            color: 0x888888,
+                            side: THREE.DoubleSide
+                        });
+                        
+                        model.traverse((child) => {
+                            if (child.isMesh) {
+                                child.material = defaultMaterial;
+                                originalMaterials.push({
+                                    mesh: child,
+                                    material: child.material
+                                });
+                            }
+                        });
+
+                        // Center and scale the model
+                        const box = new THREE.Box3().setFromObject(model);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3());
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        const scale = 10 / maxDim;
+                        
+                        model.position.sub(center);
+                        model.scale.multiplyScalar(scale);
+                        
+                        scene.add(model);
+                        loadingElement.classList.add('hidden');
+                    },
+                    (xhr) => {
+                        const percentComplete = (xhr.loaded / xhr.total) * 100;
+                        loadingElement.textContent = `Loading 3D Model... ${Math.round(percentComplete)}%`;
+                    },
+                    (error) => {
+                        console.error('Error loading OBJ:', error);
+                        loadingElement.classList.add('error');
+                        loadingElement.innerHTML = `
+                            <strong>Error loading 3D model</strong><br><br>
+                            Make sure all three files are in the same folder:<br>
+                            • room-viewer.html<br>
+                            • room.obj<br>
+                            • room.mtl<br><br>
+                            <strong>If files are in the same folder but still not loading:</strong><br>
+                            Some browsers block local file access for security.<br><br>
+                            <strong>Solution:</strong> Run a local server:<br>
+                            1. Open Terminal/Command Prompt<br>
+                            2. Navigate to the folder with these files<br>
+                            3. Run: <code>python3 -m http.server 8000</code><br>
+                            4. Open: <a href="http://localhost:8000/room-viewer.html" target="_blank">http://localhost:8000/room-viewer.html</a>
+                        `;
+                    }
+                );
+            }
+        );
+
+        // Button controls
+        document.getElementById('reset-camera').addEventListener('click', () => {
+            camera.position.set(5, 5, 5);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        });
+
+        document.getElementById('top-view').addEventListener('click', () => {
+            camera.position.set(0, 15, 0);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        });
+
+        document.getElementById('toggle-wireframe').addEventListener('click', () => {
+            wireframeMode = !wireframeMode;
+            if (model) {
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        if (wireframeMode) {
+                            child.material = new THREE.MeshBasicMaterial({ 
+                                color: 0x000000, 
+                                wireframe: true 
+                            });
+                        } else {
+                            const original = originalMaterials.find(m => m.mesh === child);
+                            if (original) {
+                                child.material = original.material;
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        document.getElementById('show-grid').addEventListener('change', (e) => {
+            gridHelper.visible = e.target.checked;
+        });
+
+        document.getElementById('show-axes').addEventListener('change', (e) => {
+            axesHelper.visible = e.target.checked;
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
